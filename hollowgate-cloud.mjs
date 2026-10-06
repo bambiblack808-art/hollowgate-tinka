@@ -755,7 +755,9 @@ var BASELINE = {
   lanceMax: 0,
   reserve: 50,
   upgradeWhen: 4,
-  preferUpgrade: 1
+  preferUpgrade: 1,
+  fillCap: 14,
+  deepFirst: 1
 };
 var PREFERRED_PATH = {
   sentry: "rate",
@@ -776,7 +778,9 @@ function clampGene(k, v) {
     lanceMax: 2,
     reserve: 110,
     upgradeWhen: 8,
-    preferUpgrade: 1
+    preferUpgrade: 1,
+    fillCap: 28,
+    deepFirst: 1
   };
   return Math.max(0, Math.min(max[k], Math.round(v)));
 }
@@ -792,7 +796,7 @@ function mutateGenome(src, rng) {
   return next;
 }
 function genomeLabel(g) {
-  return `b4=${g.minBodies4} b8=${g.minBodies8} frost=${g.frostMax}@${g.frostAfter} mortar=${g.mortarMax}@${g.mortarAfter} lance=${g.lanceMax}@${g.lanceAfter} res=${g.reserve} up@${g.upgradeWhen}`;
+  return `b4=${g.minBodies4} b8=${g.minBodies8} cap=${g.fillCap} deep=${g.deepFirst} frost=${g.frostMax}@${g.frostAfter} mortar=${g.mortarMax}@${g.mortarAfter} res=${g.reserve}`;
 }
 function occupied(g) {
   return new Set(g.towers.map((t) => `${t.col},${t.row}`));
@@ -817,15 +821,29 @@ function nextNode(kind, owned) {
   return null;
 }
 function cheapestUpgrade(g) {
-  let best2 = null;
+  let bestPick = null;
   for (const t of g.towers) {
     const node = nextNode(t.kind, t.owned);
     if (!node || !g.canBuy(t, node)) continue;
-    if (!best2 || node.cost < best2.node.cost) best2 = { id: t.id, node };
+    if (!bestPick || node.cost < bestPick.node.cost) bestPick = { id: t.id, node };
   }
-  return best2;
+  return bestPick;
+}
+function pickUpgrade(g, genome) {
+  if (!genome.deepFirst) return cheapestUpgrade(g);
+  let bestPick = null;
+  for (const t of g.towers) {
+    const node = nextNode(t.kind, t.owned);
+    if (!node || !g.canBuy(t, node)) continue;
+    const depth = t.owned.size;
+    if (!bestPick || depth > bestPick.depth || depth === bestPick.depth && t.id < bestPick.idn) {
+      bestPick = { id: t.id, node, depth, idn: t.id };
+    }
+  }
+  return bestPick ? { id: bestPick.id, node: bestPick.node } : null;
 }
 function placeNext(g, genome) {
+  if (genome.fillCap > 0 && g.towers.length >= genome.fillCap) return null;
   const taken = occupied(g);
   for (const step of BUILD_ORDER) {
     if (taken.has(`${step.c},${step.r}`)) continue;
@@ -844,7 +862,7 @@ function placeNext(g, genome) {
 }
 var active = { ...BASELINE };
 var best = { ...BASELINE };
-var bestReward = 14310;
+var bestReward = 14420;
 var generation = 0;
 var games = 0;
 var nextSeed = 15;
@@ -863,10 +881,11 @@ function tinkaAct(g, genome = active) {
   }
   if (g.mode !== "playing") return null;
   const sentryCost = TOWERS.sentry.cost;
-  const needMoreBodies = g.towers.length < 4 || g.wave >= 4 && g.towers.length < genome.minBodies4 || g.wave >= 8 && g.towers.length < genome.minBodies8;
+  const capped = genome.fillCap > 0 && g.towers.length >= genome.fillCap;
+  const needMoreBodies = !capped && (g.towers.length < 4 || g.wave >= 4 && g.towers.length < genome.minBodies4 || g.wave >= 8 && g.towers.length < genome.minBodies8);
   if (!needMoreBodies && g.towers.length >= genome.upgradeWhen && genome.preferUpgrade) {
-    const up2 = cheapestUpgrade(g);
-    const floor = g.towers.length < 10 ? Math.max(genome.reserve, sentryCost) : 0;
+    const up2 = pickUpgrade(g, genome);
+    const floor = capped || g.towers.length >= 10 ? 0 : Math.max(genome.reserve, sentryCost);
     if (up2 && g.gold - up2.node.cost >= floor) {
       if (g.buyUpgrade(up2.id, up2.node.id)) {
         const t = g.towerById(up2.id);
@@ -876,7 +895,7 @@ function tinkaAct(g, genome = active) {
   }
   const placed = placeNext(g, genome);
   if (placed) return placed;
-  const up = cheapestUpgrade(g);
+  const up = pickUpgrade(g, genome);
   if (up && g.buyUpgrade(up.id, up.node.id)) {
     const t = g.towerById(up.id);
     return `upgrade ${t ? TOWERS[t.kind].name : "?"} ${up.node.name}`;
@@ -965,7 +984,7 @@ function persist() {
   if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(
-      "hollowgate-tinka",
+      "hollowgate-tinka-v2",
       JSON.stringify({ best, bestReward, generation, games, nextSeed })
     );
   } catch {
