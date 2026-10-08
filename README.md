@@ -4,6 +4,8 @@ Tower defense engine + Tinka autoplay. Gold, lives, and leftover are ledger valu
 
 **Solved (fillCap 14, deepen Rapid/Gatling):** 40/40 wins, 0 leaks, 2235 earned, **185 leftover**, spent 2170, 14 towers, reward **14420**.
 
+**Extraction surface is live.** See [EXTRACTION.md](./EXTRACTION.md) and [SCOREBOARD.md](./SCOREBOARD.md).
+
 ## Cloud Shell (from home, no npm install)
 
 ```bash
@@ -26,3 +28,7 @@ node hollowgate-cloud.mjs --iters 12 --seed 15
 ```
 
 Engine source: `src/game/` (`engine.ts` spend/earn/ledger, `tinka.ts` policy).
+
+## Beat the board
+
+Open an issue titled `score: <reward>` with the final JSON line from the runner. Higher reward on seed 15 takes the table in SCOREBOARD.md.
